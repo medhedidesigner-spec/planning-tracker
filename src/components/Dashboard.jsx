@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
+import { EXAMPLE_PLANNING } from '../data/examplePlanning'
 
 export default function Dashboard({ onOpenPlanning }) {
   const { user, signOut } = useAuth()
@@ -78,14 +79,29 @@ export default function Dashboard({ onOpenPlanning }) {
 
         {loading ? (
           <div className="empty-state">Chargement...</div>
-        ) : plannings.length === 0 ? (
-          <div className="empty-state">
-            <div className="empty-icon">📭</div>
-            <p>Aucun planning pour l'instant.</p>
-            <p className="empty-sub">Crée ton premier planning pour commencer !</p>
-          </div>
         ) : (
           <div className="planning-grid">
+            <div
+              key="example"
+              className="planning-card planning-card-example"
+              onClick={() => onOpenPlanning('example')}
+            >
+              <div className="planning-card-top">
+                <span className="planning-icon">✨</span>
+              </div>
+              <h3 className="planning-card-title">{EXAMPLE_PLANNING.title}</h3>
+              <div className="planning-card-meta">
+                <span className="badge-example">Exemple — Lecture seule</span>
+              </div>
+            </div>
+
+            {plannings.length === 0 && (
+              <div className="empty-state-inline">
+                <p>Pas encore de planning à toi.</p>
+                <p className="empty-sub">Clique sur "+ Nouveau planning" pour commencer !</p>
+              </div>
+            )}
+
             {plannings.map(p => (
               <div key={p.id} className="planning-card" onClick={() => onOpenPlanning(p.id)}>
                 <div className="planning-card-top">

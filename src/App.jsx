@@ -5,6 +5,7 @@ import Auth from './components/Auth'
 import UpdatePassword from './components/UpdatePassword'
 import Dashboard from './components/Dashboard'
 import PlanningView from './components/PlanningView'
+import ExamplePlanningView from './components/ExamplePlanningView'
 import './App.css'
 
 function AppContent() {
@@ -25,6 +26,10 @@ function AppContent() {
 
   if (!user) {
     return <Auth />
+  }
+
+  if (currentPlanningId === 'example') {
+    return <ExamplePlanningView onBack={() => setCurrentPlanningId(null)} />
   }
 
   if (currentPlanningId) {

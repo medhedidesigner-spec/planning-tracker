@@ -4,5 +4,5 @@ import react from '@vitejs/plugin-react'
 export default defineConfig({
   plugins: [react()],
   // IMPORTANT : remplace 'roadmap-app' par le nom exact de ton repo GitHub
-  base: '/roadmap-app/',
+  base: '/planning-tracker/',
 })

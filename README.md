@@ -18,7 +18,7 @@ App collaborative de planning avec authentification, partage et suivi de progres
 ## Important : Configuration Supabase Auth
 
 Dans Supabase → Authentication → URL Configuration :
-- Site URL : `https://TON_USERNAME.github.io/roadmap-app/`
+- Site URL : `https://TON_USERNAME.github.io/planning-tracker/`
 - Redirect URLs : ajoute la même URL
 
 ## Déployer

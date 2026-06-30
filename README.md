@@ -1,4 +1,4 @@
-# 🚀 Roadmap App
+# 🚀 Planning Tracker
 
 App collaborative de planning avec authentification, partage et suivi de progression.
 

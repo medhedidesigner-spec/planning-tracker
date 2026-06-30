@@ -562,3 +562,110 @@ body {
   margin-bottom: 16px;
   line-height: 1.5;
 }
+
+/* CARD PROGRESS */
+.card-pct {
+  font-size: 13px;
+  font-weight: 800;
+  color: #fff;
+  background: var(--border);
+  padding: 2px 8px;
+  border-radius: 6px;
+}
+.card-progress-bar {
+  background: #0d0d14;
+  border-radius: 99px;
+  height: 4px;
+  overflow: hidden;
+  margin: 4px 0 10px;
+}
+.card-progress-fill {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 99px;
+  transition: width 0.4s ease;
+}
+
+/* EDITABLE TITLES */
+.header-title.editable, .phase-title.editable, .planning-card-title {
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+.header-title.editable:hover, .phase-title.editable:hover {
+  opacity: 0.75;
+}
+.planning-card-title:hover {
+  text-decoration: underline;
+  text-decoration-style: dashed;
+  text-underline-offset: 3px;
+}
+.header-title-input {
+  background: #0d0d14;
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  padding: 4px 10px;
+  font-size: 21px;
+  font-weight: 800;
+  color: #fff;
+  font-family: inherit;
+  outline: none;
+  width: 100%;
+  max-width: 320px;
+}
+.phase-title-input {
+  background: #0d0d14;
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  padding: 4px 10px;
+  font-size: 19px;
+  font-weight: 800;
+  color: #fff;
+  font-family: inherit;
+  outline: none;
+  width: 100%;
+  max-width: 320px;
+}
+.planning-card-title-input {
+  background: #0d0d14;
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  padding: 4px 8px;
+  font-size: 14px;
+  font-weight: 700;
+  color: #fff;
+  font-family: inherit;
+  outline: none;
+  width: 100%;
+  margin-bottom: 10px;
+}
+
+/* ICON PICKER */
+.icon-wrap { position: relative; }
+.planning-icon.editable { cursor: pointer; transition: transform 0.15s; }
+.planning-icon.editable:hover { transform: scale(1.15); }
+.icon-picker {
+  position: absolute;
+  top: 32px;
+  left: 0;
+  z-index: 20;
+  background: var(--bg-card);
+  border: 1px solid var(--border-light);
+  border-radius: 12px;
+  padding: 8px;
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 4px;
+  box-shadow: 0 12px 32px rgba(0,0,0,0.5);
+  width: 190px;
+}
+.icon-picker-item {
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  font-size: 18px;
+  padding: 6px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.icon-picker-item:hover { background: var(--border); }
+.icon-picker-item.selected { border-color: var(--accent); background: rgba(124,111,255,0.15); }

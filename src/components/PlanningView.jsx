@@ -211,9 +211,11 @@ function WeekCard({ week, phaseColor, canEdit, onUpdateWeek, onDeleteWeek, onObj
   )
 }
 
-function PhaseSection({ phase, canEdit, onAddWeek, onDeleteWeek, onUpdateWeek, onObjectivesChange, onDeletePhase, weeksData }) {
+function PhaseSection({ phase, canEdit, onAddWeek, onDeleteWeek, onUpdateWeek, onObjectivesChange, onDeletePhase, onUpdatePhase, weeksData }) {
   const [showAddWeek, setShowAddWeek] = useState(false)
   const [newWeekTitle, setNewWeekTitle] = useState('')
+  const [editingTitle, setEditingTitle] = useState(false)
+  const [titleDraft, setTitleDraft] = useState(phase.title)
 
   const weeks = weeksData[phase.id] || []
   const allObjectives = weeks.flatMap(w => w.objectives || [])
@@ -228,12 +230,34 @@ function PhaseSection({ phase, canEdit, onAddWeek, onDeleteWeek, onUpdateWeek, o
     setShowAddWeek(false)
   }
 
+  const saveTitle = async () => {
+    setEditingTitle(false)
+    if (!titleDraft.trim() || titleDraft === phase.title) {
+      setTitleDraft(phase.title)
+      return
+    }
+    await onUpdatePhase(phase.id, { title: titleDraft.trim() })
+  }
+
   return (
     <div className="phase-view">
       <div className="phase-header" style={{ borderColor: phase.color + '44' }}>
-        <div>
+        <div style={{ flex: 1, minWidth: 0 }}>
           <div className="phase-months" style={{ color: phase.color }}>{weeks.length} semaine{weeks.length !== 1 ? 's' : ''}</div>
-          <div className="phase-title">{phase.title}</div>
+          {editingTitle ? (
+            <input
+              className="phase-title-input"
+              value={titleDraft}
+              onChange={e => setTitleDraft(e.target.value)}
+              onBlur={saveTitle}
+              onKeyDown={e => { if (e.key === 'Enter') saveTitle(); if (e.key === 'Escape') { setTitleDraft(phase.title); setEditingTitle(false) } }}
+              autoFocus
+            />
+          ) : (
+            <div className={`phase-title ${canEdit ? 'editable' : ''}`} onClick={() => canEdit && setEditingTitle(true)}>
+              {phase.title}
+            </div>
+          )}
         </div>
         <div className="phase-stat">
           <span className="phase-pct" style={{ color: phase.color }}>{pct}<small>%</small></span>
@@ -287,12 +311,15 @@ export default function PlanningView({ planningId, onBack }) {
   const [showAddPhase, setShowAddPhase] = useState(false)
   const [newPhaseTitle, setNewPhaseTitle] = useState('')
   const [myRole, setMyRole] = useState('readonly')
+  const [editingPlanningTitle, setEditingPlanningTitle] = useState(false)
+  const [planningTitleDraft, setPlanningTitleDraft] = useState('')
 
   const loadAll = useCallback(async () => {
     setLoading(true)
 
     const { data: planningData } = await supabase.from('plannings').select('*').eq('id', planningId).single()
     setPlanning(planningData)
+    setPlanningTitleDraft(planningData?.title || '')
 
     const isOwner = planningData?.owner_id === user.id
     if (isOwner) {
@@ -351,6 +378,13 @@ export default function PlanningView({ planningId, onBack }) {
     if (activePhase === phaseId) setActivePhase(newPhases[0]?.id || null)
   }
 
+  const updatePhase = async (phaseId, fields) => {
+    const { data } = await supabase.from('phases').update(fields).eq('id', phaseId).select().single()
+    if (data) {
+      setPhases(phases.map(p => p.id === phaseId ? data : p))
+    }
+  }
+
   const addWeek = async (phaseId, title) => {
     const position = (weeksData[phaseId] || []).length
     const { data } = await supabase.from('weeks').insert({ phase_id: phaseId, title, position }).select().single()
@@ -388,6 +422,20 @@ export default function PlanningView({ planningId, onBack }) {
     setWeeksData(updated)
   }
 
+  const updatePlanning = async (fields) => {
+    const { data } = await supabase.from('plannings').update(fields).eq('id', planningId).select().single()
+    if (data) setPlanning(data)
+  }
+
+  const savePlanningTitle = async () => {
+    setEditingPlanningTitle(false)
+    if (!planningTitleDraft.trim() || planningTitleDraft === planning.title) {
+      setPlanningTitleDraft(planning.title)
+      return
+    }
+    await updatePlanning({ title: planningTitleDraft.trim() })
+  }
+
   if (loading) return <div className="app"><div className="empty-state">Chargement...</div></div>
   if (!planning) return <div className="app"><div className="empty-state">Planning introuvable.</div></div>
 
@@ -403,7 +451,20 @@ export default function PlanningView({ planningId, onBack }) {
         <div className="header-inner">
           <div className="header-left">
             <button className="btn-back" onClick={onBack}>← Mes plannings</button>
-            <h1 className="header-title">{planning.title}</h1>
+            {editingPlanningTitle ? (
+              <input
+                className="header-title-input"
+                value={planningTitleDraft}
+                onChange={e => setPlanningTitleDraft(e.target.value)}
+                onBlur={savePlanningTitle}
+                onKeyDown={e => { if (e.key === 'Enter') savePlanningTitle(); if (e.key === 'Escape') { setPlanningTitleDraft(planning.title); setEditingPlanningTitle(false) } }}
+                autoFocus
+              />
+            ) : (
+              <h1 className={`header-title ${canEdit ? 'editable' : ''}`} onClick={() => canEdit && setEditingPlanningTitle(true)}>
+                {planning.title}
+              </h1>
+            )}
           </div>
           <div className="header-right">
             <div className="overall-pct">{overallPct}<span>%</span></div>
@@ -469,6 +530,7 @@ export default function PlanningView({ planningId, onBack }) {
             onUpdateWeek={updateWeek}
             onObjectivesChange={onObjectivesChange}
             onDeletePhase={deletePhase}
+            onUpdatePhase={updatePhase}
           />
         ) : null}
       </main>

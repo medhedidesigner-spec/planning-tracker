@@ -2,6 +2,79 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import { EXAMPLE_PLANNING } from '../data/examplePlanning'
+import IconPicker from './IconPicker'
+
+function PlanningCard({ p, user, getProgress, onOpenPlanning, onDelete, onUpdate }) {
+  const [editingTitle, setEditingTitle] = useState(false)
+  const [titleDraft, setTitleDraft] = useState(p.title)
+  const [showIconPicker, setShowIconPicker] = useState(false)
+  const { total, done, pct } = getProgress(p)
+  const canEdit = p.owner_id === user.id
+
+  const saveTitle = async () => {
+    setEditingTitle(false)
+    if (!titleDraft.trim() || titleDraft === p.title) {
+      setTitleDraft(p.title)
+      return
+    }
+    await onUpdate(p.id, { title: titleDraft.trim() })
+  }
+
+  const changeIcon = async (icon) => {
+    await onUpdate(p.id, { icon })
+  }
+
+  return (
+    <div className="planning-card" onClick={() => !editingTitle && !showIconPicker && onOpenPlanning(p.id)}>
+      <div className="planning-card-top">
+        <div className="icon-wrap" onClick={e => { if (canEdit) { e.stopPropagation(); setShowIconPicker(!showIconPicker) } }}>
+          <span className={`planning-icon ${canEdit ? 'editable' : ''}`}>{p.icon || '🗂️'}</span>
+          {showIconPicker && (
+            <IconPicker value={p.icon || '🗂️'} onChange={changeIcon} onClose={() => setShowIconPicker(false)} />
+          )}
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          {total > 0 && <span className="card-pct">{pct}%</span>}
+          {canEdit && (
+            <button className="btn-icon-danger" onClick={(e) => onDelete(p.id, e)} title="Supprimer">✕</button>
+          )}
+        </div>
+      </div>
+
+      {editingTitle ? (
+        <input
+          className="planning-card-title-input"
+          value={titleDraft}
+          onChange={e => setTitleDraft(e.target.value)}
+          onClick={e => e.stopPropagation()}
+          onBlur={saveTitle}
+          onKeyDown={e => { if (e.key === 'Enter') saveTitle(); if (e.key === 'Escape') { setTitleDraft(p.title); setEditingTitle(false) } }}
+          autoFocus
+        />
+      ) : (
+        <h3
+          className="planning-card-title"
+          onClick={e => { if (canEdit) { e.stopPropagation(); setEditingTitle(true) } }}
+        >
+          {p.title}
+        </h3>
+      )}
+
+      {total > 0 && (
+        <div className="card-progress-bar">
+          <div className="card-progress-fill" style={{ width: `${pct}%` }} />
+        </div>
+      )}
+      <div className="planning-card-meta">
+        {p.owner_id !== user.id && <span className="badge-shared">Partagé avec toi</span>}
+        {p.collaborators?.[0]?.count > 0 && (
+          <span className="badge-collab">👥 {p.collaborators[0].count}</span>
+        )}
+        {total > 0 && <span className="badge-collab">{done}/{total}</span>}
+      </div>
+    </div>
+  )
+}
 
 export default function Dashboard({ onOpenPlanning }) {
   const { user, signOut } = useAuth()
@@ -14,10 +87,20 @@ export default function Dashboard({ onOpenPlanning }) {
     setLoading(true)
     const { data, error } = await supabase
       .from('plannings')
-      .select('*, collaborators(count)')
+      .select('*, collaborators(count), phases(weeks(objectives(done)))')
       .order('created_at', { ascending: false })
     if (!error) setPlannings(data || [])
     setLoading(false)
+  }
+
+  const getProgress = (planning) => {
+    const objectives = (planning.phases || []).flatMap(p =>
+      (p.weeks || []).flatMap(w => w.objectives || [])
+    )
+    const total = objectives.length
+    const done = objectives.filter(o => o.done).length
+    const pct = total > 0 ? Math.round((done / total) * 100) : 0
+    return { total, done, pct }
   }
 
   useEffect(() => { loadPlannings() }, [])
@@ -43,6 +126,17 @@ export default function Dashboard({ onOpenPlanning }) {
     await supabase.from('plannings').delete().eq('id', id)
     loadPlannings()
   }
+
+  const updatePlanning = async (id, fields) => {
+    const { data, error } = await supabase.from('plannings').update(fields).eq('id', id).select().single()
+    if (!error && data) {
+      setPlannings(plannings.map(p => p.id === id ? { ...p, ...data } : p))
+    }
+  }
+
+  const exampleObjectives = EXAMPLE_PLANNING.phases.flatMap(p => p.weeks.flatMap(w => w.objectives))
+  const exampleDone = exampleObjectives.filter(o => o.done).length
+  const examplePct = Math.round((exampleDone / exampleObjectives.length) * 100)
 
   return (
     <div className="app">
@@ -88,8 +182,12 @@ export default function Dashboard({ onOpenPlanning }) {
             >
               <div className="planning-card-top">
                 <span className="planning-icon">✨</span>
+                <span className="card-pct">{examplePct}%</span>
               </div>
               <h3 className="planning-card-title">{EXAMPLE_PLANNING.title}</h3>
+              <div className="card-progress-bar">
+                <div className="card-progress-fill" style={{ width: `${examplePct}%`, background: '#7c6fff' }} />
+              </div>
               <div className="planning-card-meta">
                 <span className="badge-example">Exemple — Lecture seule</span>
               </div>
@@ -103,21 +201,15 @@ export default function Dashboard({ onOpenPlanning }) {
             )}
 
             {plannings.map(p => (
-              <div key={p.id} className="planning-card" onClick={() => onOpenPlanning(p.id)}>
-                <div className="planning-card-top">
-                  <span className="planning-icon">🗂️</span>
-                  {p.owner_id === user.id && (
-                    <button className="btn-icon-danger" onClick={(e) => deletePlanning(p.id, e)} title="Supprimer">✕</button>
-                  )}
-                </div>
-                <h3 className="planning-card-title">{p.title}</h3>
-                <div className="planning-card-meta">
-                  {p.owner_id !== user.id && <span className="badge-shared">Partagé avec toi</span>}
-                  {p.collaborators?.[0]?.count > 0 && (
-                    <span className="badge-collab">👥 {p.collaborators[0].count}</span>
-                  )}
-                </div>
-              </div>
+              <PlanningCard
+                key={p.id}
+                p={p}
+                user={user}
+                getProgress={getProgress}
+                onOpenPlanning={onOpenPlanning}
+                onDelete={deletePlanning}
+                onUpdate={updatePlanning}
+              />
             ))}
           </div>
         )}

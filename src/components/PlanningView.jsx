@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import ShareModal from './ShareModal'
@@ -11,13 +11,14 @@ function formatDate(dateStr) {
   return d.toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' })
 }
 
-function ObjectiveRow({ obj, canEdit, onToggle, onDelete, onUpdate }) {
+// ─── OBJECTIVE ROW (avec poignée drag & drop) ────────────────────────────────
+function ObjectiveRow({ obj, canEdit, onToggle, onDelete, onUpdate, dragHandlers, isDragging, isDragOver }) {
   const [editing, setEditing] = useState(false)
   const [label, setLabel] = useState(obj.label)
   const [url, setUrl] = useState(obj.url || '')
 
   const save = () => {
-    onUpdate(obj.id, { label, url })
+    onUpdate(obj.id, { label, url: url || null })
     setEditing(false)
   }
 
@@ -27,24 +28,35 @@ function ObjectiveRow({ obj, canEdit, onToggle, onDelete, onUpdate }) {
         <input value={label} onChange={e => setLabel(e.target.value)} placeholder="Objectif" autoFocus />
         <input value={url} onChange={e => setUrl(e.target.value)} placeholder="Lien ressource (optionnel)" />
         <button className="btn-mini-primary" onClick={save}>✓</button>
-        <button className="btn-mini-ghost" onClick={() => setEditing(false)}>✕</button>
+        <button className="btn-mini-ghost" onClick={() => { setLabel(obj.label); setUrl(obj.url || ''); setEditing(false) }}>✕</button>
       </div>
     )
   }
 
   return (
-    <div className="task-item">
+    <div
+      className={`task-item ${isDragging ? 'obj-dragging' : ''} ${isDragOver ? 'obj-drag-over' : ''}`}
+      {...(canEdit ? {
+        draggable: true,
+        onDragStart: dragHandlers?.onDragStart,
+        onDragEnd: dragHandlers?.onDragEnd,
+        onDragOver: dragHandlers?.onDragOver,
+        onDrop: dragHandlers?.onDrop,
+      } : {})}
+    >
       <div
         className="checkbox"
         onClick={() => canEdit && onToggle(obj)}
         style={{
           borderColor: obj.done ? '#10b981' : '#334155',
           background: obj.done ? '#10b981' : 'transparent',
-          cursor: canEdit ? 'pointer' : 'default'
+          cursor: canEdit ? 'pointer' : 'default',
+          flexShrink: 0,
         }}
       >
         {obj.done && <span>✓</span>}
       </div>
+
       <div className="task-content">
         <span className={`task-label ${obj.done ? 'done' : ''}`}>{obj.label}</span>
         <div className="task-meta">
@@ -59,10 +71,18 @@ function ObjectiveRow({ obj, canEdit, onToggle, onDelete, onUpdate }) {
           )}
         </div>
       </div>
+
+      {/* Poignée drag — à droite, séparée du checkbox */}
+      {canEdit && (
+        <span className="obj-drag-handle" title="Glisser pour réordonner">
+          ☰
+        </span>
+      )}
     </div>
   )
 }
 
+// ─── WEEK CARD ────────────────────────────────────────────────────────────────
 function WeekCard({ week, phaseColor, canEdit, onUpdateWeek, onDeleteWeek, onObjectivesChange }) {
   const [expanded, setExpanded] = useState(false)
   const [objectives, setObjectives] = useState(week.objectives || [])
@@ -73,51 +93,54 @@ function WeekCard({ week, phaseColor, canEdit, onUpdateWeek, onDeleteWeek, onObj
   const [startDate, setStartDate] = useState(week.start_date || '')
   const [endDate, setEndDate] = useState(week.end_date || '')
 
+  // Titre éditable
+  const [editingTitle, setEditingTitle] = useState(false)
+  const [titleDraft, setTitleDraft] = useState(week.title)
+
+  // Drag & drop objectifs
+  const dragObjIndex = useRef(null)
+  const [draggingObjId, setDraggingObjId] = useState(null)
+  const [dragOverObjId, setDragOverObjId] = useState(null)
+
   const done = objectives.filter(o => o.done).length
   const pct = objectives.length ? Math.round((done / objectives.length) * 100) : 0
   const isComplete = objectives.length > 0 && done === objectives.length
 
+  // ── Titre semaine ──
+  const saveTitle = async () => {
+    setEditingTitle(false)
+    if (!titleDraft.trim() || titleDraft === week.title) { setTitleDraft(week.title); return }
+    await onUpdateWeek(week.id, { title: titleDraft.trim() })
+  }
+
+  // ── Objectifs ──
   const toggleObj = async (obj) => {
     const { data } = await supabase.from('objectives').update({ done: !obj.done }).eq('id', obj.id).select().single()
-    if (data) {
-      const updated = objectives.map(o => o.id === obj.id ? data : o)
-      setObjectives(updated)
-      onObjectivesChange(week.id, updated)
-    }
+    if (data) { const u = objectives.map(o => o.id === obj.id ? data : o); setObjectives(u); onObjectivesChange(week.id, u) }
   }
 
   const updateObj = async (id, fields) => {
     const { data } = await supabase.from('objectives').update(fields).eq('id', id).select().single()
-    if (data) {
-      const updated = objectives.map(o => o.id === id ? data : o)
-      setObjectives(updated)
-      onObjectivesChange(week.id, updated)
-    }
+    if (data) { const u = objectives.map(o => o.id === id ? data : o); setObjectives(u); onObjectivesChange(week.id, u) }
   }
 
   const deleteObj = async (id) => {
     await supabase.from('objectives').delete().eq('id', id)
-    const updated = objectives.filter(o => o.id !== id)
-    setObjectives(updated)
-    onObjectivesChange(week.id, updated)
+    const u = objectives.filter(o => o.id !== id)
+    setObjectives(u); onObjectivesChange(week.id, u)
   }
 
   const addObj = async (e) => {
     e.preventDefault()
     if (!newObjLabel.trim()) return
     const { data } = await supabase.from('objectives').insert({
-      week_id: week.id,
-      label: newObjLabel.trim(),
-      url: newObjUrl.trim() || null,
-      position: objectives.length
+      week_id: week.id, label: newObjLabel.trim(),
+      url: newObjUrl.trim() || null, position: objectives.length
     }).select().single()
     if (data) {
-      const updated = [...objectives, data]
-      setObjectives(updated)
-      onObjectivesChange(week.id, updated)
-      setNewObjLabel('')
-      setNewObjUrl('')
-      setShowAddObj(false)
+      const u = [...objectives, data]
+      setObjectives(u); onObjectivesChange(week.id, u)
+      setNewObjLabel(''); setNewObjUrl(''); setShowAddObj(false)
     }
   }
 
@@ -126,18 +149,77 @@ function WeekCard({ week, phaseColor, canEdit, onUpdateWeek, onDeleteWeek, onObj
     setEditingDates(false)
   }
 
+  // ── Drag & drop objectifs ──
+  const getDragHandlers = (index, obj) => ({
+    onDragStart: (e) => {
+      dragObjIndex.current = index
+      setDraggingObjId(obj.id)
+      e.dataTransfer.effectAllowed = 'move'
+    },
+    onDragEnd: () => {
+      dragObjIndex.current = null
+      setDraggingObjId(null)
+      setDragOverObjId(null)
+    },
+    onDragOver: (e) => {
+      e.preventDefault()
+      e.dataTransfer.dropEffect = 'move'
+      setDragOverObjId(obj.id)
+    },
+    onDrop: async (e) => {
+      e.preventDefault()
+      const fromIndex = dragObjIndex.current
+      if (fromIndex === null || fromIndex === index) return
+      const reordered = [...objectives]
+      const [moved] = reordered.splice(fromIndex, 1)
+      reordered.splice(index, 0, moved)
+      // Optimistic update
+      setObjectives(reordered)
+      onObjectivesChange(week.id, reordered)
+      setDraggingObjId(null)
+      setDragOverObjId(null)
+      // Persist positions
+      await Promise.all(
+        reordered.map((o, i) => supabase.from('objectives').update({ position: i }).eq('id', o.id))
+      )
+    },
+  })
+
   return (
     <div className={`week-card ${isComplete ? 'complete' : ''}`} style={{ '--phase-color': phaseColor }}>
-      <button className="week-header" onClick={() => setExpanded(!expanded)}>
-        <div className="week-badge" style={{
-          background: isComplete ? phaseColor : 'transparent',
-          borderColor: isComplete ? phaseColor : '#334155'
-        }}>
-          {isComplete ? '✓' : '📅'}
-        </div>
+      <div className="week-header">
+        <button className="week-badge-btn" onClick={() => setExpanded(!expanded)}>
+          <div className="week-badge" style={{
+            background: isComplete ? phaseColor : 'transparent',
+            borderColor: isComplete ? phaseColor : '#334155'
+          }}>
+            {isComplete ? '✓' : '📅'}
+          </div>
+        </button>
+
         <div className="week-info">
-          <span className="week-title">{week.title}</span>
-          <div className="week-progress-row">
+          {editingTitle ? (
+            <input
+              className="week-title-input"
+              value={titleDraft}
+              onChange={e => setTitleDraft(e.target.value)}
+              onBlur={saveTitle}
+              onKeyDown={e => {
+                if (e.key === 'Enter') saveTitle()
+                if (e.key === 'Escape') { setTitleDraft(week.title); setEditingTitle(false) }
+              }}
+              autoFocus
+              onClick={e => e.stopPropagation()}
+            />
+          ) : (
+            <span
+              className={`week-title ${canEdit ? 'editable' : ''}`}
+              onClick={() => { if (canEdit) setEditingTitle(true) }}
+            >
+              {titleDraft}
+            </span>
+          )}
+          <div className="week-progress-row" onClick={() => setExpanded(!expanded)} style={{ cursor: 'pointer' }}>
             {objectives.length > 0 && (
               <>
                 <div className="mini-bar">
@@ -153,8 +235,11 @@ function WeekCard({ week, phaseColor, canEdit, onUpdateWeek, onDeleteWeek, onObj
             )}
           </div>
         </div>
-        <span className={`chevron ${expanded ? 'open' : ''}`}>▼</span>
-      </button>
+
+        <button className="chevron-btn" onClick={() => setExpanded(!expanded)}>
+          <span className={`chevron ${expanded ? 'open' : ''}`}>▼</span>
+        </button>
+      </div>
 
       {expanded && (
         <div className="task-list">
@@ -182,7 +267,7 @@ function WeekCard({ week, phaseColor, canEdit, onUpdateWeek, onDeleteWeek, onObj
             <div className="empty-inline">Aucun objectif pour cette semaine.</div>
           )}
 
-          {objectives.map(obj => (
+          {objectives.map((obj, i) => (
             <ObjectiveRow
               key={obj.id}
               obj={obj}
@@ -190,6 +275,9 @@ function WeekCard({ week, phaseColor, canEdit, onUpdateWeek, onDeleteWeek, onObj
               onToggle={toggleObj}
               onDelete={deleteObj}
               onUpdate={updateObj}
+              dragHandlers={canEdit ? getDragHandlers(i, obj) : null}
+              isDragging={draggingObjId === obj.id}
+              isDragOver={dragOverObjId === obj.id && draggingObjId !== obj.id}
             />
           ))}
 
@@ -211,6 +299,7 @@ function WeekCard({ week, phaseColor, canEdit, onUpdateWeek, onDeleteWeek, onObj
   )
 }
 
+// ─── PHASE SECTION ────────────────────────────────────────────────────────────
 function PhaseSection({ phase, canEdit, onAddWeek, onDeleteWeek, onUpdateWeek, onObjectivesChange, onDeletePhase, onUpdatePhase, weeksData }) {
   const [showAddWeek, setShowAddWeek] = useState(false)
   const [newWeekTitle, setNewWeekTitle] = useState('')
@@ -226,16 +315,12 @@ function PhaseSection({ phase, canEdit, onAddWeek, onDeleteWeek, onUpdateWeek, o
     e.preventDefault()
     if (!newWeekTitle.trim()) return
     await onAddWeek(phase.id, newWeekTitle.trim())
-    setNewWeekTitle('')
-    setShowAddWeek(false)
+    setNewWeekTitle(''); setShowAddWeek(false)
   }
 
   const saveTitle = async () => {
     setEditingTitle(false)
-    if (!titleDraft.trim() || titleDraft === phase.title) {
-      setTitleDraft(phase.title)
-      return
-    }
+    if (!titleDraft.trim() || titleDraft === phase.title) { setTitleDraft(phase.title); return }
     await onUpdatePhase(phase.id, { title: titleDraft.trim() })
   }
 
@@ -263,7 +348,7 @@ function PhaseSection({ phase, canEdit, onAddWeek, onDeleteWeek, onUpdateWeek, o
           <span className="phase-pct" style={{ color: phase.color }}>{pct}<small>%</small></span>
           <span className="phase-sub">{done}/{allObjectives.length}</span>
           {canEdit && (
-            <button className="btn-icon-danger" style={{ marginTop: 8 }} onClick={() => onDeletePhase(phase.id)} title="Supprimer la phase">✕</button>
+            <button className="btn-icon-danger" style={{ marginTop: 8 }} onClick={() => onDeletePhase(phase.id)}>✕</button>
           )}
         </div>
       </div>
@@ -300,11 +385,12 @@ function PhaseSection({ phase, canEdit, onAddWeek, onDeleteWeek, onUpdateWeek, o
   )
 }
 
+// ─── PLANNING VIEW (main) ─────────────────────────────────────────────────────
 export default function PlanningView({ planningId, onBack }) {
   const { user } = useAuth()
   const [planning, setPlanning] = useState(null)
   const [phases, setPhases] = useState([])
-  const [weeksData, setWeeksData] = useState({}) // { phaseId: [weeks with objectives] }
+  const [weeksData, setWeeksData] = useState({})
   const [activePhase, setActivePhase] = useState(null)
   const [loading, setLoading] = useState(true)
   const [showShare, setShowShare] = useState(false)
@@ -316,7 +402,6 @@ export default function PlanningView({ planningId, onBack }) {
 
   const loadAll = useCallback(async () => {
     setLoading(true)
-
     const { data: planningData } = await supabase.from('plannings').select('*').eq('id', planningId).single()
     setPlanning(planningData)
     setPlanningTitleDraft(planningData?.title || '')
@@ -356,17 +441,13 @@ export default function PlanningView({ planningId, onBack }) {
     if (!newPhaseTitle.trim()) return
     const color = PHASE_COLORS[phases.length % PHASE_COLORS.length]
     const { data } = await supabase.from('phases').insert({
-      planning_id: planningId,
-      title: newPhaseTitle.trim(),
-      color,
-      position: phases.length
+      planning_id: planningId, title: newPhaseTitle.trim(), color, position: phases.length
     }).select().single()
     if (data) {
       setPhases([...phases, data])
       setWeeksData({ ...weeksData, [data.id]: [] })
       setActivePhase(data.id)
-      setNewPhaseTitle('')
-      setShowAddPhase(false)
+      setNewPhaseTitle(''); setShowAddPhase(false)
     }
   }
 
@@ -380,26 +461,20 @@ export default function PlanningView({ planningId, onBack }) {
 
   const updatePhase = async (phaseId, fields) => {
     const { data } = await supabase.from('phases').update(fields).eq('id', phaseId).select().single()
-    if (data) {
-      setPhases(phases.map(p => p.id === phaseId ? data : p))
-    }
+    if (data) setPhases(phases.map(p => p.id === phaseId ? data : p))
   }
 
   const addWeek = async (phaseId, title) => {
     const position = (weeksData[phaseId] || []).length
     const { data } = await supabase.from('weeks').insert({ phase_id: phaseId, title, position }).select().single()
-    if (data) {
-      setWeeksData({ ...weeksData, [phaseId]: [...(weeksData[phaseId] || []), { ...data, objectives: [] }] })
-    }
+    if (data) setWeeksData({ ...weeksData, [phaseId]: [...(weeksData[phaseId] || []), { ...data, objectives: [] }] })
   }
 
   const deleteWeek = async (weekId) => {
     if (!confirm('Supprimer cette semaine et ses objectifs ?')) return
     await supabase.from('weeks').delete().eq('id', weekId)
     const updated = { ...weeksData }
-    for (const phaseId in updated) {
-      updated[phaseId] = updated[phaseId].filter(w => w.id !== weekId)
-    }
+    for (const phaseId in updated) updated[phaseId] = updated[phaseId].filter(w => w.id !== weekId)
     setWeeksData(updated)
   }
 
@@ -407,33 +482,24 @@ export default function PlanningView({ planningId, onBack }) {
     const { data } = await supabase.from('weeks').update(fields).eq('id', weekId).select().single()
     if (data) {
       const updated = { ...weeksData }
-      for (const phaseId in updated) {
+      for (const phaseId in updated)
         updated[phaseId] = updated[phaseId].map(w => w.id === weekId ? { ...data, objectives: w.objectives } : w)
-      }
       setWeeksData(updated)
     }
   }
 
   const onObjectivesChange = (weekId, objectives) => {
     const updated = { ...weeksData }
-    for (const phaseId in updated) {
+    for (const phaseId in updated)
       updated[phaseId] = updated[phaseId].map(w => w.id === weekId ? { ...w, objectives } : w)
-    }
     setWeeksData(updated)
-  }
-
-  const updatePlanning = async (fields) => {
-    const { data } = await supabase.from('plannings').update(fields).eq('id', planningId).select().single()
-    if (data) setPlanning(data)
   }
 
   const savePlanningTitle = async () => {
     setEditingPlanningTitle(false)
-    if (!planningTitleDraft.trim() || planningTitleDraft === planning.title) {
-      setPlanningTitleDraft(planning.title)
-      return
-    }
-    await updatePlanning({ title: planningTitleDraft.trim() })
+    if (!planningTitleDraft.trim() || planningTitleDraft === planning.title) { setPlanningTitleDraft(planning.title); return }
+    const { data } = await supabase.from('plannings').update({ title: planningTitleDraft.trim() }).eq('id', planningId).select().single()
+    if (data) setPlanning(data)
   }
 
   if (loading) return <div className="app"><div className="empty-state">Chargement...</div></div>
@@ -442,7 +508,6 @@ export default function PlanningView({ planningId, onBack }) {
   const allObjectives = Object.values(weeksData).flat().flatMap(w => w.objectives || [])
   const totalDone = allObjectives.filter(o => o.done).length
   const overallPct = allObjectives.length ? Math.round((totalDone / allObjectives.length) * 100) : 0
-
   const currentPhase = phases.find(p => p.id === activePhase)
 
   return (
@@ -498,13 +563,8 @@ export default function PlanningView({ planningId, onBack }) {
           {canEdit && (
             showAddPhase ? (
               <form className="phase-tab-add-form" onSubmit={addPhase}>
-                <input
-                  autoFocus
-                  value={newPhaseTitle}
-                  onChange={e => setNewPhaseTitle(e.target.value)}
-                  placeholder="Nom de la phase"
-                  onBlur={() => !newPhaseTitle && setShowAddPhase(false)}
-                />
+                <input autoFocus value={newPhaseTitle} onChange={e => setNewPhaseTitle(e.target.value)}
+                  placeholder="Nom de la phase" onBlur={() => !newPhaseTitle && setShowAddPhase(false)} />
               </form>
             ) : (
               <button className="phase-tab phase-tab-add" onClick={() => setShowAddPhase(true)}>+ Phase</button>
@@ -535,9 +595,7 @@ export default function PlanningView({ planningId, onBack }) {
         ) : null}
       </main>
 
-      {showShare && (
-        <ShareModal planningId={planningId} onClose={() => setShowShare(false)} />
-      )}
+      {showShare && <ShareModal planningId={planningId} onClose={() => setShowShare(false)} />}
     </div>
   )
 }

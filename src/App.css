@@ -669,3 +669,74 @@ body {
 }
 .icon-picker-item:hover { background: var(--border); }
 .icon-picker-item.selected { border-color: var(--accent); background: rgba(124,111,255,0.15); }
+
+/* ── WEEK HEADER restructuré ── */
+.week-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+}
+.week-badge-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  flex-shrink: 0;
+}
+.chevron-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0 2px;
+  color: var(--text-faint);
+  font-size: 10px;
+  flex-shrink: 0;
+}
+
+/* ── Titre semaine éditable ── */
+.week-title.editable {
+  cursor: pointer;
+}
+.week-title.editable:hover {
+  text-decoration: underline;
+  text-decoration-style: dashed;
+  text-underline-offset: 3px;
+  color: var(--text);
+}
+.week-title-input {
+  background: #0d0d14;
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  padding: 3px 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #fff;
+  font-family: inherit;
+  outline: none;
+  width: 100%;
+  display: block;
+  margin-bottom: 4px;
+}
+
+/* ── Drag & drop objectifs ── */
+.obj-drag-handle {
+  font-size: 14px;
+  color: var(--text-faint);
+  cursor: grab;
+  padding: 2px 4px;
+  border-radius: 4px;
+  flex-shrink: 0;
+  margin-left: auto;
+  transition: color 0.15s;
+  user-select: none;
+}
+.obj-drag-handle:hover { color: var(--text-dim); }
+.obj-drag-handle:active { cursor: grabbing; }
+
+.obj-dragging {
+  opacity: 0.4;
+}
+.obj-drag-over {
+  border-top: 2px solid var(--accent);
+}
